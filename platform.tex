@@ -109,7 +109,6 @@ and the opcodes READ\_OPCODE and WRITE\_OPCODE are assumed to be defined.
 
 In the future, non-blocking transfer functions may be added if necessary.
 
-\newpage
 \begin{verbatim}
 /* Build txBuffer to write the string 0x3, 0x2, 0x1 at address 0x0000 */
 uint8_t txBuffer[6] = {WRITE_OPCODE, 0x00, 0x00, 0x3, 0x2, 0x1}
