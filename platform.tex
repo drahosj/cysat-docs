@@ -181,3 +181,31 @@ opcodes, but NOT including the I2C device address. Call I2CxBlockingWrite() with
 the appropriate arguments to perform the transfer. Release the mutex when complete.
 
 \end{document}
+
+\subsection{UART/Serial}
+The UARTx in the UART API follow CubeSatKit conventions. UART1 is the console
+UART, and UART2 is the Radio UART. The functions below are all rather self-explanatory.
+vConsolePrintf should be used for console printfs, reserving explicit UART1
+and UART2 access for situations where it actually matters.
+vConsoleErrorPrintf wraps the print in red.
+
+\begin{table}
+\begin{center}
+\caption{UART Core API Functions}
+\begin{tabular}{| l | l |}
+    \hline 
+    Function \\ \hline
+    vUartxPut(char) \\ \hline
+    vUartxPrint(str) \\ \hline
+    vUartxPrintf(fmt, ...) \\ \hline
+    vConsolePut(char) \\ \hline
+    vConsolePrint(str) \\ \hline
+    vConsolePrintf(fmt, ...) \\ \hline
+    vConsoleErrorPrintf(fmt, ...) \\ \hline
+\end{tabular}
+\end{center}
+\end{table}
+
+\subsection{Mission Clock}
+call getMissionTime() to return a time_t of the mission time (seconds since first
+power-on).
