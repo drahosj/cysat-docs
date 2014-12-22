@@ -7,6 +7,7 @@
 \usepackage{times}
 \usepackage[margin=0.75in]{geometry}
 \usepackage{hyperref}
+\usepackage{caption}
 
 \hypersetup{pdfborder={0 0 0}}
 
@@ -56,7 +57,7 @@ accessible directly. If in doubt, check the code. GPIOs will always be directly
 accessible, but check
 to see if the pins are in use.
 
-\subsection{Serial Peripheral Interface (SPI) API}
+\subsection{Serial Peripheral Interface (SPI)}
 The SPI peripherals are wrapped in a DMA and RTOS layer to allow the current
 task to block while transferring, yet other tasks to run in the meantime.
 Mutexes are used to avoid peripheral conflicts. It is conceivable to take the
@@ -68,8 +69,9 @@ correlate to the STM32 peripheral names, not the CubeSatKit bus names. See
 the above section ``Pin and Peripheral Mapping'' to associate STM32 peripherals
 with CubeSatKit bus interfaces.
 
-Core API Functions
+\begin{table}
 \begin{center}
+\caption{SPI Core API Functions}
 \begin{tabular}{| l | l |}
     \hline 
     Function & Description \\ \hline
@@ -78,6 +80,7 @@ Core API Functions
     SPIxBlockingTransfer(*tx, *rx, length) & Perform a blocking DMA'd transfer \\ \hline
 \end{tabular}
 \end{center}
+\end{table}
 
 SPIxMutexTake(timeout) returns true if the mutex was acquired or false if the
 timeout (in msec) was reached. Once the mutex is acquired, it must be released
@@ -104,6 +107,9 @@ The stub functions
 assertChipSelect() and deassertChipSelect() would be implemented by the task in question,
 and the opcodes READ\_OPCODE and WRITE\_OPCODE are assumed to be defined.
 
+In the future, non-blocking transfer functions may be added if necessary.
+
+\newpage
 \begin{verbatim}
 /* Build txBuffer to write the string 0x3, 0x2, 0x1 at address 0x0000 */
 uint8_t txBuffer[6] = {WRITE_OPCODE, 0x00, 0x00, 0x3, 0x2, 0x1}
@@ -143,15 +149,19 @@ else
 }
 
 \end{verbatim}
+\clearpage
 
-In the future, non-blocking transfer functions may be added if necessary.
 
 \subsection{Inter-Inegrated Circuit (I2C)}
 The I2C API is very similar to the SPI API, however it features only one buffer
 and separate functions for reads and writes.
 
+The numbered I2Cx peripherals are based on the STM32 name, not CubeSatKit names.
+
 Core API Functions
+\begin{table}
 \begin{center}
+\caption{I2C Core API Functions}
 \begin{tabular}{| l | l |}
     \hline 
     Function & Description \\ \hline
@@ -161,6 +171,7 @@ Core API Functions
     I2CxBlockingWrite(address, *buffer, length) & Perform a blocking DMA'd write \\ \hline
 \end{tabular}
 \end{center}
+\end{table}
 
 The I2C API is used much like the SPI api, however there is only one buffer that
 is used to store bytes to be written or bytes to be read in the case of a write
@@ -169,3 +180,5 @@ call I2CxBlockingRead() with the appropriate address, buffer, and length. To
 perform a write, pre-fill the buffer with the data to be written, including any
 opcodes, but NOT including the I2C device address. Call I2CxBlockingWrite() with
 the appropriate arguments to perform the transfer. Release the mutex when complete.
+
+\end{document}
