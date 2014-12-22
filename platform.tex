@@ -1,0 +1,170 @@
+% platform.tex - Cysat Software Platform API and Payload Interface Document
+
+% Jake Drahos - December 2014
+
+
+\documentclass{article}
+\usepackage{times}
+\usepackage[margin=0.75in]{geometry}
+\usepackage{hyperref}
+
+\hypersetup{pdfborder={0 0 0}}
+
+\begin{document}
+
+\title{Cysat Platform API Documentation}
+\author{Jake Drahos \\ \texttt{drahos@iastate.edu}}
+\date{\today\\v0.1 (DRAFT)}
+
+\maketitle
+
+\tableofcontents
+
+\section{Introduction}
+This document serves two purposes. The first is to detail the functionality 
+provided by the CySat platform and
+describe the APIs to access that functionality.
+
+The second purpose of this document is to fully explain the layer of connection
+between the payload handling thread and the rest of the CySat platform, namely
+the communications/downlink thread. This document will act as a guide for
+payload integration, detailing the interfaces that the payload thread should
+ use
+to extract data from the payload board, and how the payload thread should 
+communicate this data to the communications thread.
+
+This document is currently a working draft. Proposals from any team can be taken
+into account.
+
+\section{Pin and Peripheral Mapping}
+
+SECTION UNDER CONSTRUCTION - PENDING FINAL STM32 MCU MODULE DESIGN
+
+This section details which ports and pins map to which CubeSatKit IO lines,
+as well as which STM32 peripherals are used for the CubeSatKit standard 
+interfaces, such as System I2C, System SPI, and UART1/2.
+
+\section{Hardware API}
+There is not a full true hardware abstraction layer, but hardware should be
+accessed through these API functions if available, rather than through manual
+direct register manipulation or through the ST Peripheral Library. This API
+contains RTOS wrapping and wrapping to go from CubeSatKit naming conventions
+to the actual peripherals.
+
+If a hardware function does not have APIs documented here, it is likely
+accessible directly. If in doubt, check the code. GPIOs will always be directly 
+accessible, but check
+to see if the pins are in use.
+
+\subsection{Serial Peripheral Interface (SPI) API}
+The SPI peripherals are wrapped in a DMA and RTOS layer to allow the current
+task to block while transferring, yet other tasks to run in the meantime.
+Mutexes are used to avoid peripheral conflicts. It is conceivable to take the
+mutex for a SPI peripheral and then directly access it, but that is not
+recommended.
+
+The functions documented here refer to SPIx, where x is a number. These numbers
+correlate to the STM32 peripheral names, not the CubeSatKit bus names. See
+the above section ``Pin and Peripheral Mapping'' to associate STM32 peripherals
+with CubeSatKit bus interfaces.
+
+Core API Functions
+\begin{center}
+\begin{tabular}{| l | l |}
+    \hline 
+    Function & Description \\ \hline
+    SPIxMutexTake(timeout) & Take mutex for SPIx.  \\ \hline
+    SPIxMutexRelease() & Release mutex for SPIx. \\ \hline
+    SPIxBlockingTransfer(*tx, *rx, length) & Perform a blocking DMA'd transfer \\ \hline
+\end{tabular}
+\end{center}
+
+SPIxMutexTake(timeout) returns true if the mutex was acquired or false if the
+timeout (in msec) was reached. Once the mutex is acquired, it must be released
+with SPIxMutexRelease()
+once the task is no longer using it. This mutex is held separately of the
+transfer to allow operations such as Flash status checking to be done within the
+same ``session'' as an actual read or write. This mutex should not be used for
+large sequences of complex reads or writes, such as filesystem access. A separate
+mutex should be used for functionality built on top of this layer.
+    
+While the mutex is held, SPIxBlockingTransfer can be used to perform a SPI session.
+All that this function does is kick off a DMA session, sequentially transmitting
+bytes from the tx buffer and storing the received bytes in the rx buffer until
+length bytes have been transmitted. Any assertion of CS lines must be manually
+done. The current task will block while the transfer is in progress, but other
+tasks will be allowed to run. Both pointer arguments must point to valid buffer
+space of at least length.
+
+The following snipped shows an example of writing the sequence 0x3, 0x2, 0x1 to
+a hypothetical external device, and then reading the middle byte back.
+The hypothetical device takes one byte of opcode, three bytes of address, and then
+an arbitrary number of data bytes, either read or written.
+The stub functions
+assertChipSelect() and deassertChipSelect() would be implemented by the task in question,
+and the opcodes READ_OPCODE and WRITE_OPCODE are assumed to be defined.
+
+\begin{verbatim}
+/* Build txBuffer to write the string 0x3, 0x2, 0x1 at address 0x0000 */
+uint8_t txBuffer[6] = {WRITE_OPCODE, 0x00, 0x00, 0x3, 0x2, 0x1}
+uint8_t rxBuffer[6]; /* Empty read buffer */
+
+if (SPI1MutexTake(10000)) /* Delay up to 10s taking mutex */
+{  
+    assertChipSelect(); /* Drive CS low to initiate SPI transaction
+    /* Transmit WRITE_OPCODE, ADDHIGH, ADDRLOW, DATA, DATA, DATA */
+    SPI1BlockingTransfer(txBuffer, rxBuffer, 6);
+    deassertChipSelect();
+    
+    /* The hypothetical device has now written 0x3, 0x2, 0x1 at address 0x0000.
+    txBuffer is unaltered, and rxBuffer is full of junk */
+    
+    
+    txBuffer[0] = READ_OPCODE;
+    txBuffer[2] = 0x01;
+    
+    /* The transmit buffer is now pre-filled to contain a READ ADDRESS 0x0001 instruction,
+    followed by sufficient dummy data bytes. Note that the data bytes could be
+    any value, as our hypothetical device operates in half-duplex mode */
+    
+    assertChipSelect();
+    /* Transmit READ_OPCODE, ADDRESS, DUMMY */
+    SPI1BlockingTransfer(txBuffer, rxBuffer, 4);
+    deassertChipSelect();
+    
+    /* rxBuffer now contains [junk, junk, junk, 0x01] */
+    
+    SPI1MutexRelease();
+}
+else
+{
+    /* Handle error */
+}
+
+\end{verbatim}
+
+In the future, non-blocking transfer functions may be added if necessary.
+
+\subsection{Inter-Inegrated Circuit (I2C)}
+The I2C API is very similar to the SPI API, however it features only one buffer
+and separate functions for reads and writes.
+
+Core API Functions
+\begin{center}
+\begin{tabular}{| l | l |}
+    \hline 
+    Function & Description \\ \hline
+    I2CxMutexTake(timeout) & Take mutex for I2Cx.  \\ \hline
+    I2CxMutexRelease() & Release mutex for I2Cx. \\ \hline
+    I2CxBlockingRead(address, *buffer, length) & Perform a blocking DMA'd read \\ \hline
+    I2CxBlockingWrite(address, *buffer, length) & Perform a blocking DMA'd write \\ \hline
+\end{tabular}
+\end{center}
+
+The I2C API is used much like the SPI api, however there is only one buffer that
+is used to store bytes to be written or bytes to be read in the case of a write
+or a read, respectively. Once the mutex is obtained, to perform a read simply
+call I2CxBlockingRead() with the appropriate address, buffer, and length. To 
+perform a write, pre-fill the buffer with the data to be written, including any
+opcodes, but NOT including the I2C device address. Call I2CxBlockingWrite() with
+the appropriate arguments to perform the transfer. Release the mutex when complete.
