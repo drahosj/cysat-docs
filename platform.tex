@@ -34,8 +34,13 @@ payload integration, detailing the interfaces that the payload thread should
 to extract data from the payload board, and how the payload thread should 
 communicate this data to the communications thread.
 
-This document is currently a working draft. Proposals from any team can be taken
-into account.
+This document is currently a working draft. Proposals will be taken into account
+and adjustments made. Also note that, until this document leaves draft status,
+the API documentation is not intended to be an exhaustive or canonical
+reference. Rather, it is intended to give an idea of how the APIs work. As
+development proceeds, new APIs can and will be added to expose additional
+functionality, but these APIs will operate in much the same way as those
+documented here.
 
 \section{Pin and Peripheral Mapping}
 
@@ -185,8 +190,8 @@ the appropriate arguments to perform the transfer. Release the mutex when comple
 \subsection{UART/Serial}
 The UARTx in the UART API follow CubeSatKit conventions. UART1 is the console
 UART, and UART2 is the Radio UART. The functions below are all rather self-explanatory.
-vConsolePrintf should be used for console printfs, reserving explicit UART1
-and UART2 access for situations where it actually matters.
+vConsole(Put/Print/Printf) should be used for console printfs, reserving explicit UART1
+and UART2 access for situations where the distinction is significant.
 vConsoleErrorPrintf wraps the print in red.
 
 \begin{table}
@@ -207,5 +212,170 @@ vConsoleErrorPrintf wraps the print in red.
 \end{table}
 
 \subsection{Mission Clock}
-call getMissionTime() to return a time_t of the mission time (seconds since first
+getMissionTime(): returns a time_t of the mission time (seconds since first
 power-on).
+
+\subsection{Nonvolatile Storage (State Flags)}
+Nonvolatile Storage is available through the RTC's backup registers.
+Ideally, the payload thread should be stateless or read any state information
+from the SD card. Additionally, the backup registers are extremely limited, as
+only 20 4-byte registers are available. For these reasons, no API is provided
+at this time. However, should this functionality become necessary, functions
+will be added as follows:
+
+\begin{center}
+\caption{Backup Register Access API}
+\begin{tabular}{| l | l |}
+    \hline 
+    Function & Description \\ \hline
+    <name>BackupRegisterRead() & Read backup register. Returns uint32_t  \\ \hline
+    <name>BackupRegisterWrite(uint32_t) & Write backup register. \\ \hline
+\end{tabular}
+\end{center}
+\end{table}
+
+Backup registers will be added by name. They cannot easily be written to
+by address due to write protection mechanisms.
+
+\section{Platform-Payload Interface}
+This section is a proposal by the Iowa State team, not
+a final set of requirements.
+
+All payload interface will be handled by a single subsystem, referred to as the
+"payload thread." As such, this section largely describes the interface between
+the payload thread and the rest of the platform threads.
+
+This section will undergo heavy revision during the draft/feedback process.
+
+\subsection{Payload Thread Scope}
+The payload thread will have the following responsibilities:
+\begin{itemize}
+    \item Filesystem.
+    \item SD Card access arbitration.
+    \item Image selection.
+    \item Payload board initialization and management.
+    \item Presentation of images to the communications thread.
+\end{itemize}
+
+The filesystem will be entirely the domain of the payload thread. It will not be
+used for any other purpose. As such, the filesystem implementation is completely
+internal to the payload thread. However, the payload thread must use the
+platform APIs (SPI or SDIO) for SD card access to ensure that other threads will not be blocked
+during large reads or writes and to avoid conflicts with other external hardware
+that may be on the same bus.
+
+SD card access arbitration will be done by the payload thread using direct access
+to the GPIOs. The system I2C bus can also be used for arbitration.
+
+Image selection will be handled by the payload thread. This process must be
+non-volatile, ie. if there is a power loss, the same images must be re-loaded
+upon restart. Ideally this will be handled by the flash filesystem, however
+access can be granted to the backup registers if this would simplify the
+process.
+
+The payload thread will initialize the payload board as part of its initialization.
+Initialization will be done upon startup, however the payload thread and payload
+board should be initialized into a low-power, inactive state. The payload thread
+and payload board should be able to be activated and deactivated many times
+throughout the mission timeline.
+
+The largest responsibility of the payload thread will be to load images from 
+the SD card ard present them to the communications thread for downlinking. This
+is described in detail below.
+
+\subsection{Image Presentation}
+Two image "slots", tentatively 64KB in size, would be statically allocated,
+along with a number of flags used to communicate state from the payload thread
+to the communications thread. These slots, imageSlotA and imageSlotB, would be
+populated by the payload thread and read by the communications thread. Upon
+command from the communications thread, the payload thread would "flush" the
+specified slot, deleting that image from the SD card and then proceeding to
+load a new image into its place.
+
+As stated above, a number of flags will communicate state from the payload
+thread to the communications thread. The payload thread will receive from a 
+queue to receive commands from the communications thread. These commands would
+include the "flush" command above, as well as activate/deactivate, purge, and
+miscellaneous configuration information that should be forwarded to the payload
+board or otherwise handled appropriately.
+
+\begin{table}
+\begin{center}
+\caption{Globally accessible Payload<->Platform Interface variables}
+\begin{tabular}{| l | l |}
+    \hline 
+    Variable & Brief description \\ \hline
+    uint8_t[] imageSlotA & First 64K image buffer \\ \hline
+    uint8_t[] imageSlotB & Second 64K image buffer \\ \hline
+    uint32_t imageSizeA & Image A size in bytes. 0 for not loaded\\ \hline
+    uint32_t imageSizeB & Image B size in bytes. 0 for not loaded \\ \hline
+    uint32_t imagesOnSDCard & Number of images on SD card. Periodically updated \\ \hline
+    payloadStatus_t payloadStatus & Enum for current payload status (active/inactive) \\ \hline
+    resolution_t currentResolution & Enum for resolution. \\ \hline
+    captureFrequency_t currentCaptureFrequency & Enum for capture frequency. \\ \hline
+    xQueueHandle payloadCommandQueue & Queue of commands sent to payload thread \\ \hline
+    uint32_t errorFlags & Bit mask of error flags \\ \hline
+\end{tabular}
+\end{center}
+\end{table}
+
+All of the above variables, with the exception of the queue,
+will be written only by the payload thread. To enforce
+this, a number of getters could be used and the variables could be made non-global.
+If this is done, the getter naming scheme would be getVariableName, where
+VariableName is the name given above with the first letter capitalized.
+Getters for the image slots are obviously impractical.
+
+\begin{table}
+\begin{center}
+\caption{Non-exhaustive list of commands}
+\begin{tabular}{| l | l |}
+    \hline 
+    Command & Brief description \\ \hline
+    activate & Turn on payload board and begin populating image slots if possible \\ \hline
+    deactivate & Turn off payload board and immediately cease population of image slots \\ \hline
+    purge & Delete all images from SD card. Ignored while active \\ \hline
+    flushSlotA & Flush slot A and delete from SD card \\ \hline
+    flushSlotB & Flush slot B and delete from SD card \\ \hline
+    setResolutionLow & Set resolution\\ \hline
+    setResolutionMed & Set resolution\\ \hline
+    setResolutionHigh & Set resolution\\ \hline
+    setCaptureFrequencyHighest & Set frequency at which images are taken\\ \hline
+    setCaptureFrequencyHigh & Set frequency at which images are taken\\ \hline
+    setCaptureFrequencyMedium & Set frequency at which images are taken\\ \hline
+    setCaptureFrequencyLow & Set frequency at which images are taken\\ \hline
+    setCaptureFrequencyLowest & Set frequency at which images are taken\\ \hline
+    setCaptureFrequencyNone & Stop capturing images. Put payload board into low-power mode, but do not deactivate.\\ \hline
+\end{tabular}
+\end{center}
+\end{table}
+
+\subsection{Flow}
+Upon initialization, the payload thread should set all flags and configuration
+settings to sane defaults.
+
+Upon initialization or deactivation, the payload thread should ensure that the 
+payload board is in a low-power mode. While inactive, the payload thread should
+still properly handle any configuration changing commands.
+
+Upon receiving a command to activate, the payload board should be powered on (or
+brought out of low-power mode) and the payload thread should begin loading 
+images into the slots as soon as they become available. Images should have some
+sort of intrinsic priority (such as timestamp) and the highest priority image
+should be loaded as soon as a slot is available. Once an image is loaded into
+imageSlotA, imageSizeA should be set. Once another image becomes available, 
+the payload thread should load it into imageSlotB, then set the size for
+imageSlotB.
+
+When the payload thread receives a configuration change command, such as resolution
+or capturefrequency, it should set the appropriate global flags, and forward
+the command to the payload board if appropriate. Depending on the implementation
+of "low-power mode" for the payload board, this might not be possible while
+inactive. Should that be the case, any configuration information must be copied to
+the payload board upon activation.
+
+Upon reception of a flush command, the payload thread should delete the image
+from the SD card, then set the image size to 0. At this point the slot is
+considered empty. The highest priority image (that is not already loaded into
+the other slot) should be loaded into this slot
+once available.
