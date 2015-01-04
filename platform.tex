@@ -69,91 +69,13 @@ Mutexes are used to avoid peripheral conflicts. It is conceivable to take the
 mutex for a SPI peripheral and then directly access it, but that is not
 recommended.
 
-The functions documented here refer to SPIx, where x is a number. These numbers
+The SPI API functions refer to SPIx, where x is a number. These numbers
 correlate to the STM32 peripheral names, not the CubeSatKit bus names. See
 the above section ``Pin and Peripheral Mapping'' to associate STM32 peripherals
 with CubeSatKit bus interfaces.
 
-\begin{table}
-\begin{center}
-\caption{SPI Core API Functions}
-\begin{tabular}{| l | l |}
-    \hline 
-    Function & Description \\ \hline
-    SPIxMutexTake(timeout) & Take mutex for SPIx.  \\ \hline
-    SPIxMutexRelease() & Release mutex for SPIx. \\ \hline
-    SPIxBlockingTransfer(*tx, *rx, length) & Perform a blocking DMA'd transfer \\ \hline
-\end{tabular}
-\end{center}
-\end{table}
-
-SPIxMutexTake(timeout) returns true if the mutex was acquired or false if the
-timeout (in msec) was reached. Once the mutex is acquired, it must be released
-with SPIxMutexRelease()
-once the task is no longer using it. This mutex is held separately of the
-transfer to allow operations such as Flash status checking to be done within the
-same ``session'' as an actual read or write. This mutex should not be used for
-large sequences of complex reads or writes, such as filesystem access. A separate
-mutex should be used for functionality built on top of this layer.
-    
-While the mutex is held, SPIxBlockingTransfer can be used to perform a SPI session.
-All that this function does is kick off a DMA session, sequentially transmitting
-bytes from the tx buffer and storing the received bytes in the rx buffer until
-length bytes have been transmitted. Any assertion of CS lines must be manually
-done. The current task will block while the transfer is in progress, but other
-tasks will be allowed to run. Both pointer arguments must point to valid buffer
-space of at least length.
-
-The following snipped shows an example of writing the sequence 0x3, 0x2, 0x1 to
-a hypothetical external device, and then reading the middle byte back.
-The hypothetical device takes one byte of opcode, three bytes of address, and then
-an arbitrary number of data bytes, either read or written.
-The stub functions
-assertChipSelect() and deassertChipSelect() would be implemented by the task in question,
-and the opcodes READ\_OPCODE and WRITE\_OPCODE are assumed to be defined.
-
-In the future, non-blocking transfer functions may be added if necessary.
-
-\begin{verbatim}
-/* Build txBuffer to write the string 0x3, 0x2, 0x1 at address 0x0000 */
-uint8_t txBuffer[6] = {WRITE_OPCODE, 0x00, 0x00, 0x3, 0x2, 0x1}
-uint8_t rxBuffer[6]; /* Empty read buffer */
-
-if (SPI1MutexTake(10000)) /* Delay up to 10s taking mutex */
-{  
-    assertChipSelect(); /* Drive CS low to initiate SPI transaction
-    /* Transmit WRITE_OPCODE, ADDHIGH, ADDRLOW, DATA, DATA, DATA */
-    SPI1BlockingTransfer(txBuffer, rxBuffer, 6);
-    deassertChipSelect();
-    
-    /* The hypothetical device has now written 0x3, 0x2, 0x1 at address 0x0000.
-    txBuffer is unaltered, and rxBuffer is full of junk */
-    
-    
-    txBuffer[0] = READ_OPCODE;
-    txBuffer[2] = 0x01;
-    
-    /* The transmit buffer is now pre-filled to contain a 
-    READ ADDRESS 0x0001 instruction, followed by sufficient dummy data bytes. 
-    Note that the data bytes could be any value, as the hypothetical device 
-    operates in half-duplex mode */
-    
-    assertChipSelect();
-    /* Transmit READ_OPCODE, ADDRESS, DUMMY */
-    SPI1BlockingTransfer(txBuffer, rxBuffer, 4);
-    deassertChipSelect();
-    
-    /* rxBuffer now contains [junk, junk, junk, 0x01] */
-    
-    SPI1MutexRelease();
-}
-else
-{
-    /* Handle error */
-}
-
-\end{verbatim}
-\clearpage
+See the CySat\_SPI module in the Doxygen-generated documentation for detailed
+information.
 
 
 \subsection{Inter-Inegrated Circuit (I2C)}
@@ -162,57 +84,22 @@ and separate functions for reads and writes.
 
 The numbered I2Cx peripherals are based on the STM32 name, not CubeSatKit names.
 
-Core API Functions
-\begin{table}
-\begin{center}
-\caption{I2C Core API Functions}
-\begin{tabular}{| l | l |}
-    \hline 
-    Function & Description \\ \hline
-    I2CxMutexTake(timeout) & Take mutex for I2Cx.  \\ \hline
-    I2CxMutexRelease() & Release mutex for I2Cx. \\ \hline
-    I2CxBlockingRead(address, *buffer, length) & Perform a blocking DMA'd read \\ \hline
-    I2CxBlockingWrite(address, *buffer, length) & Perform a blocking DMA'd write \\ \hline
-\end{tabular}
-\end{center}
-\end{table}
+See the CySat\_I2C module in the Doxygen-generated documentation for detailed
+information.
 
-The I2C API is used much like the SPI api, however there is only one buffer that
-is used to store bytes to be written or bytes to be read in the case of a write
-or a read, respectively. Once the mutex is obtained, to perform a read simply
-call I2CxBlockingRead() with the appropriate address, buffer, and length. To 
-perform a write, pre-fill the buffer with the data to be written, including any
-opcodes, but NOT including the I2C device address. Call I2CxBlockingWrite() with
-the appropriate arguments to perform the transfer. Release the mutex when complete.
-
-\end{document}
 
 \subsection{UART/Serial}
 The UARTx in the UART API follow CubeSatKit conventions. UART1 is the console
-UART, and UART2 is the Radio UART. The functions below are all rather self-explanatory.
+UART, and UART2 is the Radio UART. The functions are all rather self-explanatory.
 vConsole(Put/Print/Printf) should be used for console printfs, reserving explicit UART1
 and UART2 access for situations where the distinction is significant.
-vConsoleErrorPrintf wraps the print in red.
 
-\begin{table}
-\begin{center}
-\caption{UART Core API Functions}
-\begin{tabular}{| l | l |}
-    \hline 
-    Function \\ \hline
-    vUartxPut(char) \\ \hline
-    vUartxPrint(str) \\ \hline
-    vUartxPrintf(fmt, ...) \\ \hline
-    vConsolePut(char) \\ \hline
-    vConsolePrint(str) \\ \hline
-    vConsolePrintf(fmt, ...) \\ \hline
-    vConsoleErrorPrintf(fmt, ...) \\ \hline
-\end{tabular}
-\end{center}
-\end{table}
+See the CySat\_UART module of the Doxygen-generated documentation for detailed
+information.
+
 
 \subsection{Mission Clock}
-getMissionTime(): returns a time_t of the mission time (seconds since first
+getMissionTime(): returns a time\_t of the mission time (seconds since first
 power-on).
 
 \subsection{Nonvolatile Storage (State Flags)}
@@ -228,8 +115,8 @@ will be added as follows:
 \begin{tabular}{| l | l |}
     \hline 
     Function & Description \\ \hline
-    <name>BackupRegisterRead() & Read backup register. Returns uint32_t  \\ \hline
-    <name>BackupRegisterWrite(uint32_t) & Write backup register. \\ \hline
+    <name>BackupRegisterRead() & Read backup register. Returns uint32\_t  \\ \hline
+    <name>BackupRegisterWrite(uint32\_t) & Write backup register. \\ \hline
 \end{tabular}
 \end{center}
 \end{table}
@@ -305,16 +192,16 @@ board or otherwise handled appropriately.
 \begin{tabular}{| l | l |}
     \hline 
     Variable & Brief description \\ \hline
-    uint8_t[] imageSlotA & First 64K image buffer \\ \hline
-    uint8_t[] imageSlotB & Second 64K image buffer \\ \hline
-    uint32_t imageSizeA & Image A size in bytes. 0 for not loaded\\ \hline
-    uint32_t imageSizeB & Image B size in bytes. 0 for not loaded \\ \hline
-    uint32_t imagesOnSDCard & Number of images on SD card. Periodically updated \\ \hline
-    payloadStatus_t payloadStatus & Enum for current payload status (active/inactive) \\ \hline
-    resolution_t currentResolution & Enum for resolution. \\ \hline
-    captureFrequency_t currentCaptureFrequency & Enum for capture frequency. \\ \hline
+    uint8\_t[] imageSlotA & First 64K image buffer \\ \hline
+    uint8\_t[] imageSlotB & Second 64K image buffer \\ \hline
+    uint32\_t imageSizeA & Image A size in bytes. 0 for not loaded\\ \hline
+    uint32\_t imageSizeB & Image B size in bytes. 0 for not loaded \\ \hline
+    uint32\_t imagesOnSDCard & Number of images on SD card. Periodically updated \\ \hline
+    payloadStatus\_t payloadStatus & Enum for current payload status (active/inactive) \\ \hline
+    resolution\_t currentResolution & Enum for resolution. \\ \hline
+    captureFrequency\_t currentCaptureFrequency & Enum for capture frequency. \\ \hline
     xQueueHandle payloadCommandQueue & Queue of commands sent to payload thread \\ \hline
-    uint32_t errorFlags & Bit mask of error flags \\ \hline
+    uint32\_t errorFlags & Bit mask of error flags \\ \hline
 \end{tabular}
 \end{center}
 \end{table}
@@ -379,3 +266,5 @@ from the SD card, then set the image size to 0. At this point the slot is
 considered empty. The highest priority image (that is not already loaded into
 the other slot) should be loaded into this slot
 once available.
+
+\end{document}
