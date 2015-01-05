@@ -55,80 +55,167 @@ There is not a full true hardware abstraction layer, but hardware should be
 accessed through these API functions if available, rather than through manual
 direct register manipulation or through the ST Peripheral Library. This API
 contains RTOS wrapping and wrapping to go from CubeSatKit naming conventions
-to the actual peripherals.
+to the actual peripherals. Some hardware functionality is directly accessible.
+\\
 
-If a hardware function does not have APIs documented here, it is likely
-accessible directly. If in doubt, check the code. GPIOs will always be directly 
-accessible, but check
-to see if the pins are in use.
+The Doxygen-generated reference documentation is a companion to this section.
+
+\subsection{General Purpose IO (GPIO)}
+Since GPIO access is rather fundamental, no wrapping or driver will exist. Conflict
+resolution will be handled via a portmap/pin assignment spreadsheet.
+\subsubsection{Driver API}
+None. Use ST Peripheral Library or direct register manipulation.
 
 \subsection{Serial Peripheral Interface (SPI)}
 The SPI peripherals are wrapped in a DMA and RTOS layer to allow the current
 task to block while transferring, yet other tasks to run in the meantime.
-Mutexes are used to avoid peripheral conflicts. It is conceivable to take the
-mutex for a SPI peripheral and then directly access it, but that is not
-recommended.
-
-The SPI API functions refer to SPIx, where x is a number. These numbers
-correlate to the STM32 peripheral names, not the CubeSatKit bus names. See
-the above section ``Pin and Peripheral Mapping'' to associate STM32 peripherals
-with CubeSatKit bus interfaces.
-
+For this reason, it is very important to use the provided driver to avoid
+unnecessary blocking or major loss of throughput due to context switching.
+\subsubsection{Driver API}
 See the CySat\_SPI module in the Doxygen-generated documentation for detailed
 information.
-
+\subsubsection{Numbering Scheme}
+The SPI API functions refer to SPIx, where x is a number. These numbers
+correlate to the STM32 peripheral names, not the CubeSatKit bus names.
 
 \subsection{Inter-Inegrated Circuit (I2C)}
-The I2C API is very similar to the SPI API, however it features only one buffer
-and separate functions for reads and writes.
-
-The numbered I2Cx peripherals are based on the STM32 name, not CubeSatKit names.
-
+The I2C API is very similar to the SPI API.
+\subsubsection{Driver API}
 See the CySat\_I2C module in the Doxygen-generated documentation for detailed
 information.
+\subsubsection{Numbering Scheme}
+The numbered I2Cx peripherals use the STM32 name, not CubeSatKit names.
 
-
-\subsection{UART/Serial}
+\subsection{USART/Serial}
+UART access is handled through the UART Rx and Tx threads. Queues act as
+buffers in a manner similar to many desktop operating systems, except that
+there are no per-thread buffers.
+\subsubsection{Driver API}
+Documented in the CySat\_UART module of the Doxygen documentation
+\subsubsection{Numbering Scheme}
 The UARTx in the UART API follow CubeSatKit conventions. UART1 is the console
-UART, and UART2 is the Radio UART. The functions are all rather self-explanatory.
-vConsole(Put/Print/Printf) should be used for console printfs, reserving explicit UART1
-and UART2 access for situations where the distinction is significant.
+UART and should only be using to print debugging information. UART2 is the radio, and
+should not be directly accessed. There is also a set of UART functions prefixed ``vConsole''.
+These functions should be preferred for console debug and informational messages.
 
-See the CySat\_UART module of the Doxygen-generated documentation for detailed
-information.
+\subsection{Real-Time Clock}
+The real-time
+clock is wrapped to provide a mission clock.
+\subsubsection{Driver API}
+Documented in the CySat\_Clock module of the Doxygen documentation.
 
+\subsection{Backup Registers}
+The STM32 RTC peripheral contains a real-time clock as well as 
+backup registers that exist in the backup power domain. The backup registers are 
+used as nonvolatile state flags. Since the availability of backup registers
+is extremely limited, there is no public API. Additionally, only the
+initialization thread should have a persistent state, as well as some 
+specific configuration data should persist, so for design reasons
+access to the backup registers is limited. Should a need for the backup
+registers arise, they can be allocated to the payload thread, and direct
+access will be used.
+\subsubsection{Driver API}
+None. Use should be limited for design reasons as well as limited resources. Direct
+access will be used in situations where persistence is deemed necessary and
+registers can be spared.
 
-\subsection{Mission Clock}
-getMissionTime(): returns a time\_t of the mission time (seconds since first
-power-on).
+\subsection{Reset and Clock Control}
+The RCC peripheral of the STM32 is largely responsible for power management
+and enabling/disabling of specific peripherals. The RCC should not be used except
+by drivers, or when the payload thread is granted direct access, without contention,
+to an entire peripheral. Any peripheral noted as ``not utilized'' can
+be monopolized by the payload thread. In this case, the payload thread is free to
+power the monopolized peripheral on or off as needed.
+\subsubsection{Enabling Peripherals}
+Any peripheral that is directly accessed should have its corresponding 
+RCC Enable bit set as part of initialization. However, do not disable
+the RCC Enable bit as part of deinitialization. This is especially
+true of GPIOs. If a GPIO port will be used, enable it in the
+RCC as part of initialization, but never disable a GPIO port in
+the RCC.
 
-\subsection{Nonvolatile Storage (State Flags)}
-Nonvolatile Storage is available through the RTC's backup registers.
-Ideally, the payload thread should be stateless or read any state information
-from the SD card. Additionally, the backup registers are extremely limited, as
-only 20 4-byte registers are available. For these reasons, no API is provided
-at this time. However, should this functionality become necessary, functions
-will be added. These functions will be named [name]BackupRegisterRead()
-and [name]BackupRegisterWrite(), where [name] is 
-based on the subsystem that will use the backup register.
-Backup registers will be added by name, rather than address or offset.
-This will discourage usage creep, which is a major issue due to the
-extremely limited availability of the backup registers.
+\subsection{DMA Controller}
+The DMA controller is heavily leveraged by the I2C and SPI drivers, but it may
+come into use for other threads. In that case, a DMA stream may be allocated
+to that thread.
+\subsubsection{Driver API}
+None. Direct access is used.
+\subsubsection{DMA Allocation}
+\begin{tabular}{| l | c |}
+    \hline 
+    DMA Streams Allocated to Drivers & DMA2_Stream2, DMA2_Stream5, DMA1_Stream5, DMA1_Stream6\\ \hline
+\end{tabular}
 
-Access functions will be implemented on an as-needed basis and documented in the
-Doxygen-generated documentation. 
+\subsection{ADC}
+The ADC is not currently utilized by the CySat platform. It can currently be directly
+accessed by any thread.
+\subsubsection{Driver API}
+None. The ADC is not currently used.
+
+\subsection{DAC}
+The DAC is not currently utilized by the CySat platform. It can currently
+be directly accessed by any thread.
+\subsubsection{Driver API}
+None. The DAC is not currently used.
+
+\subsection{Timers}
+The hardware timers should not be used. RTOS Task Delays and timers should be used instead.
+
+\subsection{Hash Processor}
+The cryptographic processor is used to validate signatures for sensitive commands. Since it
+is a rather unique use-case peripheral, direct access will be used, but it will be
+protected by a RTOS mutex.
+\subsubsection{Driver API}
+Mutex protection documented in Doxygen. Direct access for use.
+
+\subsection{Cryptographic Processor}
+The cryptographic processor is not currently utilized.
+\subsubsection{Driver API}
+None. The cryptographic processor is not utilized.
+
+\subsection{Random Number Generator}
+The RNG is not currently utilized.
+\subsubsection{Driver API}
+None. The RNG is not currently utilized.
+
+\subsection{SDIO Interface}
+The SDIO interface is an alternative to the SPI interface for SD card access.
+Should SDIO be used, it will be implemented as a subset of the SPI driver.
+\subsection{Driver API}
+Not currently implemented, but would be implemented as a sub-feature of the 
+SPI driver.
+
+\subsection{Flexible Memory Controller (FMC) and Flexible Static Memory Controller}
+The FSMC is used as part of the housekeeping logging thread. It should not be used by 
+the payload thread. If the payload thread has housekeeping data that should be logged,
+an interface to the housekeeping thread can be developed.
+\subsubsection{Driver API}
+Should not be accessed by payload thread. If the payload thread has housekeeping data,
+an interface to the housekeeping thread can be created.
+
+\subsection{USB on-the-go}
+Not implemented and should not be used.
+
+\subsection{CAN}
+Not implemented and should not be used.
+
+\subsection{Ethernet}
+Not implemented and should not be used.
 
 \section{Platform-Payload Interface}
+\subsection{Proposal}
 This section is a proposal by the Iowa State team, not
-a final set of requirements.
+a final set of requirements. This section can be expected
+to undergo heavy revision until this is no longer a draft or
+a proposal.
 
+\subsection{Payload Thread}
 All payload interface will be handled by a single subsystem, referred to as the
-"payload thread." As such, this section largely describes the interface between
-the payload thread and the rest of the platform threads.
+``payload thread.'' As such, the payload-platform interface can be abstracted
+to an interface between the payload thread and several other threads, namely
+the communications thread and initialization thread.
 
-This section will undergo heavy revision during the draft/feedback process.
-
-\subsection{Payload Thread Scope}
+\subsection{Payload Thread Scope and Responsibilities}
 The payload thread will have the following responsibilities:
 \begin{itemize}
     \item Filesystem.
@@ -138,6 +225,7 @@ The payload thread will have the following responsibilities:
     \item Presentation of images to the communications thread.
 \end{itemize}
 
+\subsubsection{Filesystem}
 The filesystem will be entirely the domain of the payload thread. It will not be
 used for any other purpose. As such, the filesystem implementation is completely
 internal to the payload thread. However, the payload thread must use the
@@ -145,38 +233,44 @@ platform APIs (SPI or SDIO) for SD card access to ensure that other threads will
 during large reads or writes and to avoid conflicts with other external hardware
 that may be on the same bus.
 
+\subsubsection{SD Card Access Arbitration}
 SD card access arbitration will be done by the payload thread using direct access
-to the GPIOs. The system I2C bus can also be used for arbitration.
+to the GPIOs. The system I2C driver can also be used for arbitration.
 
+\subsubsection{Image Selection}
 Image selection will be handled by the payload thread. This process must be
 non-volatile, ie. if there is a power loss, the same images must be re-loaded
 upon restart. Ideally this will be handled by the flash filesystem, however
 access can be granted to the backup registers if this would simplify the
 process.
 
+\subsubsection{Payload board initialization, configuration, and management}
 The payload thread will initialize the payload board as part of its initialization.
 Initialization will be done upon startup, however the payload thread and payload
 board should be initialized into a low-power, inactive state. The payload thread
 and payload board should be able to be activated and deactivated many times
 throughout the mission timeline.
 
+\subsubsection{Image loading and presentation}
 The largest responsibility of the payload thread will be to load images from 
-the SD card ard present them to the communications thread for downlinking. This
+the SD card and present them to the communications thread for downlinking. This
 is described in detail below.
 
 \subsection{Image Presentation}
-Two image "slots", tentatively 64KB in size, would be statically allocated,
+\subsubsection{Image Slots}
+Two image ``slot'', tentatively 64KB in size, would be statically allocated,
 along with a number of flags used to communicate state from the payload thread
 to the communications thread. These slots, imageSlotA and imageSlotB, would be
 populated by the payload thread and read by the communications thread. Upon
-command from the communications thread, the payload thread would "flush" the
+command from the communications thread, the payload thread would ``flush'' the
 specified slot, deleting that image from the SD card and then proceeding to
 load a new image into its place.
 
+\subsubsection{Other channels of communication}
 As stated above, a number of flags will communicate state from the payload
 thread to the communications thread. The payload thread will receive from a 
 queue to receive commands from the communications thread. These commands would
-include the "flush" command above, as well as activate/deactivate, purge, and
+include the ``flush'' command above, as well as activate/deactivate, purge, and
 miscellaneous configuration information that should be forwarded to the payload
 board or otherwise handled appropriately.
 
@@ -200,12 +294,13 @@ board or otherwise handled appropriately.
 \end{center}
 \end{table}
 
-All of the above variables, with the exception of the queue,
+\subsubsection{Access to variables and naming scheme}
+All of the ``global'' variables, with the exception of the queue,
 will be written only by the payload thread. To enforce
-this, a number of getters could be used and the variables could be made non-global.
-If this is done, the getter naming scheme would be getVariableName, where
-VariableName is the name given above with the first letter capitalized.
-Getters for the image slots are obviously impractical.
+this, a number of getter functions will be used and the variables will be made non-global.
+If this is done, the getter naming scheme would be PAYLOAD_get[VariableName](). Access to the
+queue will be handled with PAYLOAD_QueueSend(). Access within the payload thread
+can be handled however is most conveniont.
 
 \begin{table}
 \begin{center}
@@ -231,14 +326,19 @@ Getters for the image slots are obviously impractical.
 \end{center}
 \end{table}
 
-\subsection{Flow}
+\subsection{Normal Operation}
+\subsubsection{Initialization}
 Upon initialization, the payload thread should set all flags and configuration
-settings to sane defaults.
+settings to sane defaults. No persistent state should be taken into account. Upon
+a power loss and reboot, the payload thread and board should be in an inactive state
+with sane default settings.
 
-Upon initialization or deactivation, the payload thread should ensure that the 
-payload board is in a low-power mode. While inactive, the payload thread should
-still properly handle any configuration changing commands.
+\subsubsection{Inactive State}
+ While inactive, the payload thread should
+still properly handle any configuration changing commands, but the payload board
+should remain in a low power state.
 
+\subsubsection{Activation}
 Upon receiving a command to activate, the payload board should be powered on (or
 brought out of low-power mode) and the payload thread should begin loading 
 images into the slots as soon as they become available. Images should have some
@@ -248,17 +348,26 @@ imageSlotA, imageSizeA should be set. Once another image becomes available,
 the payload thread should load it into imageSlotB, then set the size for
 imageSlotB.
 
+\subsection{Configuration Changes}
 When the payload thread receives a configuration change command, such as resolution
 or capturefrequency, it should set the appropriate global flags, and forward
 the command to the payload board if appropriate. Depending on the implementation
-of "low-power mode" for the payload board, this might not be possible while
+of ``low-power mode'' for the payload board, this might not be possible while
 inactive. Should that be the case, any configuration information must be copied to
 the payload board upon activation.
 
+\subsubsection{Flushing and Replacing Images}
 Upon reception of a flush command, the payload thread should delete the image
 from the SD card, then set the image size to 0. At this point the slot is
 considered empty. The highest priority image (that is not already loaded into
 the other slot) should be loaded into this slot
 once available.
+
+\subsubsection{Summary}
+The payload thread initializes into a low-power inactive state. It can be
+activated and deactivatied. Upon deactivation, settings are kept. Settings 
+are reset upon activation. The payload thread maintains two images loaded
+into the two slots. Upon a flush command, the image is purged from 
+the SD card, and the slot can be replaced.
 
 \end{document}
