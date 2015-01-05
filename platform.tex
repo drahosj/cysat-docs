@@ -108,21 +108,12 @@ Ideally, the payload thread should be stateless or read any state information
 from the SD card. Additionally, the backup registers are extremely limited, as
 only 20 4-byte registers are available. For these reasons, no API is provided
 at this time. However, should this functionality become necessary, functions
-will be added as follows:
-
-\begin{center}
-\caption{Backup Register Access API}
-\begin{tabular}{| l | l |}
-    \hline 
-    Function & Description \\ \hline
-    <name>BackupRegisterRead() & Read backup register. Returns uint32\_t  \\ \hline
-    <name>BackupRegisterWrite(uint32\_t) & Write backup register. \\ \hline
-\end{tabular}
-\end{center}
-\end{table}
-
-Backup registers will be added by name. They cannot easily be written to
-by address due to write protection mechanisms.
+will be added. These functions will be named [name]BackupRegisterRead()
+and [name]BackupRegisterWrite(), where [name] is 
+based on the subsystem that will use the backup register.
+Backup registers will be added by name, rather than address or offset.
+This will discourage usage creep, which is a major issue due to the
+extremely limited availability of the backup registers.
 
 \section{Platform-Payload Interface}
 This section is a proposal by the Iowa State team, not
@@ -188,7 +179,7 @@ board or otherwise handled appropriately.
 
 \begin{table}
 \begin{center}
-\caption{Globally accessible Payload<->Platform Interface variables}
+\caption{Globally accessible Payload-Platform Interface variables}
 \begin{tabular}{| l | l |}
     \hline 
     Variable & Brief description \\ \hline
