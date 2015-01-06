@@ -143,7 +143,7 @@ None. Direct access is used.
 \subsubsection{DMA Allocation}
 \begin{tabular}{| l | c |}
     \hline 
-    DMA Streams Allocated to Drivers & DMA2_Stream2, DMA2_Stream5, DMA1_Stream5, DMA1_Stream6\\ \hline
+    DMA Streams Allocated to Drivers & DMA2\_Stream2, DMA2\_Stream5, DMA1\_Stream5, DMA1\_Stream6\\ \hline
 \end{tabular}
 
 \subsection{ADC}
@@ -298,8 +298,8 @@ board or otherwise handled appropriately.
 All of the ``global'' variables, with the exception of the queue,
 will be written only by the payload thread. To enforce
 this, a number of getter functions will be used and the variables will be made non-global.
-If this is done, the getter naming scheme would be PAYLOAD_get[VariableName](). Access to the
-queue will be handled with PAYLOAD_QueueSend(). Access within the payload thread
+If this is done, the getter naming scheme would be PAYLOAD\_get[VariableName](). Access to the
+queue will be handled with PAYLOAD\_QueueSend(). Access within the payload thread
 can be handled however is most conveniont.
 
 \begin{table}
