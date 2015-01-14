@@ -13,9 +13,9 @@
 
 \begin{document}
 
-\title{Cysat Platform API Documentation}
+\title{Cysat Platform API and Payload Interface Documentation}
 \author{Jake Drahos \\ \texttt{drahos@iastate.edu}}
-\date{\today\\v0.1 (DRAFT)}
+\date{\today\\v0.2 (DRAFT)}
 
 \maketitle
 
@@ -29,9 +29,9 @@ describe the APIs to access that functionality.
 The second purpose of this document is to fully explain the layer of connection
 between the payload handling thread and the rest of the CySat platform, namely
 the communications/downlink thread. This document will act as a guide for
-payload integration, detailing the interfaces that the payload thread should
+payload integration, detailing the interfaces that the payload thread must
  use
-to extract data from the payload board, and how the payload thread should 
+to extract data from the payload board, and how the payload thread will 
 communicate this data to the communications thread.
 
 This document is currently a working draft. Proposals will be taken into account
@@ -51,7 +51,7 @@ as well as which STM32 peripherals are used for the CubeSatKit standard
 interfaces, such as System I2C, System SPI, and UART1/2.
 
 \section{Hardware API}
-There is not a full true hardware abstraction layer, but hardware should be
+There is not a full true hardware abstraction layer, but hardware must be
 accessed through these API functions if available, rather than through manual
 direct register manipulation or through the ST Peripheral Library. This API
 contains RTOS wrapping and wrapping to go from CubeSatKit naming conventions
@@ -109,8 +109,8 @@ The STM32 RTC peripheral contains a real-time clock as well as
 backup registers that exist in the backup power domain. The backup registers are 
 used as nonvolatile state flags. Since the availability of backup registers
 is extremely limited, there is no public API. Additionally, only the
-initialization thread should have a persistent state, as well as some 
-specific configuration data should persist, so for design reasons
+initialization thread will have a persistent state, as well as some 
+specific configuration data that must persist, so for design reasons
 access to the backup registers is limited. Should a need for the backup
 registers arise, they can be allocated to the payload thread, and direct
 access will be used.
@@ -121,13 +121,16 @@ registers can be spared.
 
 \subsection{Reset and Clock Control}
 The RCC peripheral of the STM32 is largely responsible for power management
-and enabling/disabling of specific peripherals. The RCC should not be used except
-by drivers, or when the payload thread is granted direct access, without contention,
+and enabling/disabling of specific peripherals. The RCC 
+should not be used except
+by drivers, or when the payload thread 
+is granted direct access, without contention,
 to an entire peripheral. Any peripheral noted as ``not utilized'' can
-be monopolized by the payload thread. In this case, the payload thread is free to
+be monopolized by the payload thread. 
+In this case, the payload thread is free to
 power the monopolized peripheral on or off as needed.
 \subsubsection{Enabling Peripherals}
-Any peripheral that is directly accessed should have its corresponding 
+Any peripheral that is directly accessed must have its corresponding 
 RCC Enable bit set as part of initialization. However, do not disable
 the RCC Enable bit as part of deinitialization. This is especially
 true of GPIOs. If a GPIO port will be used, enable it in the
@@ -186,8 +189,10 @@ Not currently implemented, but would be implemented as a sub-feature of the
 SPI driver.
 
 \subsection{Flexible Memory Controller (FMC) and Flexible Static Memory Controller}
-The FSMC is used as part of the housekeeping logging thread. It should not be used by 
-the payload thread. If the payload thread has housekeeping data that should be logged,
+The FSMC is used as part of the housekeeping logging thread. It must 
+not be used by 
+the payload thread. If the payload thread has housekeeping data that needs to
+be logged,
 an interface to the housekeeping thread can be developed.
 \subsubsection{Driver API}
 Should not be accessed by payload thread. If the payload thread has housekeeping data,
@@ -205,9 +210,12 @@ Not implemented and should not be used.
 \section{Platform-Payload Interface}
 \subsection{Proposal}
 This section is a proposal by the Iowa State team, not
-a final set of requirements. This section can be expected
+a final set of requirements. It is based on the current understanding of the
+payload's requirements and capabilities, as well as the current state and 
+capabilities of the CySat platform. This section can be expected
 to undergo heavy revision until this is no longer a draft or
 a proposal.
+
 
 \subsection{Payload Thread}
 All payload interface will be handled by a single subsystem, referred to as the
@@ -247,8 +255,8 @@ process.
 \subsubsection{Payload board initialization, configuration, and management}
 The payload thread will initialize the payload board as part of its initialization.
 Initialization will be done upon startup, however the payload thread and payload
-board should be initialized into a low-power, inactive state. The payload thread
-and payload board should be able to be activated and deactivated many times
+board must be initialized into a low-power, inactive state. The payload thread
+and payload board must be able to be activated and deactivated many times
 throughout the mission timeline.
 
 \subsubsection{Image loading and presentation}
@@ -258,21 +266,25 @@ is described in detail below.
 
 \subsection{Image Presentation}
 \subsubsection{Image Slots}
-Two image ``slot'', tentatively 64KB in size, would be statically allocated,
-along with a number of flags used to communicate state from the payload thread
+Two image ``slots'', tentatively 64KB in size, are statically allocated,
+along with a number of flags  used to communicate state from the payload thread
 to the communications thread. These slots, imageSlotA and imageSlotB, would be
 populated by the payload thread and read by the communications thread. Upon
-command from the communications thread, the payload thread would ``flush'' the
+command from the communications thread, the payload thread must ``flush'' the
 specified slot, deleting that image from the SD card and then proceeding to
-load a new image into its place.
+load a new image into its place. If an image is over 64KB in size, it must be
+discarded, preferably by the payload board. The payload thread must not present
+an image over 64KB in size to the communications thread.
 
 \subsubsection{Other channels of communication}
 As stated above, a number of flags will communicate state from the payload
 thread to the communications thread. The payload thread will receive from a 
 queue to receive commands from the communications thread. These commands would
 include the ``flush'' command above, as well as activate/deactivate, purge, and
-miscellaneous configuration information that should be forwarded to the payload
-board or otherwise handled appropriately.
+miscellaneous configuration information that needs to be forwarded 
+to the payload
+board or otherwise handled appropriately. See Table 2 for an example list of
+commands.
 
 \begin{table}
 \begin{center}
@@ -286,11 +298,14 @@ board or otherwise handled appropriately.
     uint32\_t imageSizeB & Image B size in bytes. 0 for not loaded \\ \hline
     uint32\_t imagesOnSDCard & Number of images on SD card. Periodically updated \\ \hline
     payloadStatus\_t payloadStatus & Enum for current payload status (active/inactive) \\ \hline
-    resolution\_t currentResolution & Enum for resolution. \\ \hline
-    captureFrequency\_t currentCaptureFrequency & Enum for capture frequency. \\ \hline
+    resolution\_t currentResolution\footnotemark[1] & Enum 
+    for resolution. \\ \hline
+    captureFrequency\_t currentCaptureFrequency\footnotemark[1] & Enum 
+    for capture frequency. \\ \hline
     xQueueHandle payloadCommandQueue & Queue of commands sent to payload thread \\ \hline
     uint32\_t errorFlags & Bit mask of error flags \\ \hline
-\end{tabular}
+\end{tabular}\\
+\footnotesize{1. Placeholder for part of the global configuration state} 
 \end{center}
 \end{table}
 
@@ -300,11 +315,18 @@ will be written only by the payload thread. To enforce
 this, a number of getter functions will be used and the variables will be made non-global.
 If this is done, the getter naming scheme would be PAYLOAD\_get[VariableName](). Access to the
 queue will be handled with PAYLOAD\_QueueSend(). Access within the payload thread
-can be handled however is most conveniont.
+can be handled however is most conveniont. See Table 1 for an example set of
+static variables.
 
 \begin{table}
 \begin{center}
-\caption{Non-exhaustive list of commands}
+\caption{Example list of commands}
+\footnotesize{Commands such as these are sent from the communications thread to the payload
+thread. As this is a proposal/draft, many\\ of these commands are placeholders.
+No commands have parameters; anything that would be parameterized is instead\\
+enumerated and given a distinct command. See the setResolution and 
+setCaptureFrequency \\command groups for placeholder examples.}
+
 \begin{tabular}{| l | l |}
     \hline 
     Command & Brief description \\ \hline
@@ -326,48 +348,85 @@ can be handled however is most conveniont.
 \end{center}
 \end{table}
 
-\subsection{Normal Operation}
-\subsubsection{Initialization}
-Upon initialization, the payload thread should set all flags and configuration
-settings to sane defaults. No persistent state should be taken into account. Upon
-a power loss and reboot, the payload thread and board should be in an inactive state
-with sane default settings.
+
+\subsection{State Definitions}
+There are three states: uninitialized, inactive, and active.
+
+\subsubsection{Uninitialized}
+The payload board begins in the uninitialized state until initialization.
+Variables are undefined, and the payload board is in an undefined/unknown state.The uninitialized state can be the result of a complete power loss or a graceful
+reboot, so no assumptions as to the state of the payload board can be made.
 
 \subsubsection{Inactive State}
- While inactive, the payload thread should
-still properly handle any configuration changing commands, but the payload board
-should remain in a low power state.
+The payload board is in the low-power mode during the inactive state. The
+payload thread still responds to any configuration changes and polling as
+appropriate. Any configuration change commands are applied to the global
+configuration state, and any reads of the global configuration state take any
+such
+commands into account. However, the payload board remains in the low-power mode
+and no SD card operations are performed until the active state is entered.
+
+\subsubsection{Active State}
+In the active state, the payload board is taking pictures and the payload thread
+is loading images into the SD card. The payload board is loaded with the current
+global configuration state upon activation, and any configuration change
+commands received when in the active state are immediately applied to both
+the global state and the payload board.
+In order to obtain a 
+``pseudostate'' where the payload thread loads images, but the payload board
+does not capture new images, enter the active state with the image capture
+frequency set to a ``none'' or ``disabled'' seting.
+
+\subsection{Normal Operation}
+\subsubsection{Initialization}
+Upon initialization, the payload thread must set all flags and configuration
+settings to sane defaults. No persistent state should be taken into account. Upon
+a power loss and reboot, the payload thread and board must be in an inactive state
+with sane default settings. As part of initialization, the payload thread must
+ensure that the payload board is in the low-power state.
 
 \subsubsection{Activation}
-Upon receiving a command to activate, the payload board should be powered on (or
-brought out of low-power mode) and the payload thread should begin loading 
+Upon receiving a command to activate, the payload board must
+be brought out of low-power mode. As part of being brought out of low-power
+mode, the payload board should be loaded with the current global configuration
+state. The payload thread should now begin loading 
 images into the slots as soon as they become available. Images should have some
 sort of intrinsic priority (such as timestamp) and the highest priority image
-should be loaded as soon as a slot is available. Once an image is loaded into
-imageSlotA, imageSizeA should be set. Once another image becomes available, 
+should be loaded as soon as a slot is available. This priority system is defined
+by the payload thread and the payload board, and has no influence from the
+rest of the satellite systems. Once an image is loaded into
+imageSlotA, imageSizeA must be set. Once another image becomes available, 
 the payload thread should load it into imageSlotB, then set the size for
-imageSlotB.
+imageSlotB. Images remain in the slot until removed by a flushImage command.
 
-\subsection{Configuration Changes}
+\subsubsection{Deactivation}
+The payload board is put into low-power mode, pending SD card operation. 
+Image loading must immediately cease, but SD card operations are allowed to
+continue until the filesystem is in a stable, non-corrupt state. The
+payload thread must not leave the filesystem in a corrupt state.
+
+\subsubsection{Configuration Changes and the Global Configuration State}
+The global configuration state is maintained in main memory at all times. 
+This state is initialized to sane
+defaults at initialization, modified as necessary at any time, and copied
+to the payload board upon activation. 
+The global configuration state is not in any specific format, rather it is
+a collection of variables accessed by a number of ``get-'' functions. It does
+not need to be copied in binary format to the payload board, but should
+accurately reflect the functionality of the payload board at all times, ie. for
+any given set of values, the payload board should behave in a consistent manner.
 When the payload thread receives a configuration change command, such as resolution
-or capturefrequency, it should set the appropriate global flags, and forward
-the command to the payload board if appropriate. Depending on the implementation
-of ``low-power mode'' for the payload board, this might not be possible while
-inactive. Should that be the case, any configuration information must be copied to
-the payload board upon activation.
+or capturefrequency, it must modify the global configuration state as
+appropriate, and, if the payload is active, perform the necessary operations
+to update the payload board configuration.
 
 \subsubsection{Flushing and Replacing Images}
-Upon reception of a flush command, the payload thread should delete the image
-from the SD card, then set the image size to 0. At this point the slot is
+Upon reception of a flush command, the payload thread must first set the
+appropriate image size variable to zero, then delete the image
+from the SD card. At this point the slot is
 considered empty. The highest priority image (that is not already loaded into
 the other slot) should be loaded into this slot
-once available.
-
-\subsubsection{Summary}
-The payload thread initializes into a low-power inactive state. It can be
-activated and deactivatied. Upon deactivation, settings are kept. Settings 
-are reset upon activation. The payload thread maintains two images loaded
-into the two slots. Upon a flush command, the image is purged from 
-the SD card, and the slot can be replaced.
+once available, replacing the current buffer contents. Once a new image is fully
+loaded into the slot, the appropriate imageSize flag must be set.
 
 \end{document}
