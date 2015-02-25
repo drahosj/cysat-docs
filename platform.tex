@@ -277,6 +277,7 @@ integer attribute. The signal types are defined in payload.h, as well as the
 contextual meaning of the attribute integer.
 
 \subsubsection{Image Slots}
+<<<<<<< HEAD
 A number of image ``slots'', 64KB in size, are statically allocated,
 along with a number of flags  used to communicate state from the payload thread
 to the communications thread. These slots will be
@@ -341,6 +342,34 @@ In order to obtain a
 does not capture new images, enter the active state with the image capture
 frequency set to a ``none'' or ``disabled'' seting.
 
+\subsection{State Definitions}
+There are three states: uninitialized, inactive, and active.
+
+\subsubsection{Uninitialized}
+The payload board begins in the uninitialized state until initialization.
+Variables are undefined, and the payload board is in an undefined/unknown state.The uninitialized state can be the result of a complete power loss or a graceful
+reboot, so no assumptions as to the state of the payload board can be made.
+
+\subsubsection{Inactive State}
+The payload board is in the low-power mode during the inactive state. The
+payload thread still responds to any configuration changes and polling as
+appropriate. Any configuration change commands are applied to the global
+configuration state, and any reads of the global configuration state take any
+such
+commands into account. However, the payload board remains in the low-power mode
+and no SD card operations are performed until the active state is entered.
+
+\subsubsection{Active State}
+In the active state, the payload board is taking pictures and the payload thread
+is loading images into the SD card. The payload board is loaded with the current
+global configuration state upon activation, and any configuration change
+commands received when in the active state are immediately applied to both
+the global state and the payload board.
+In order to obtain a 
+``pseudostate'' where the payload thread loads images, but the payload board
+does not capture new images, enter the active state with the image capture
+frequency set to a ``none'' or ``disabled'' seting.
+
 \subsection{Normal Operation}
 \subsubsection{Initialization}
 Upon initialization, the payload thread must set all flags and configuration
@@ -391,6 +420,10 @@ from the SD card. At this point the slot is
 considered empty. The highest priority image (that is not already loaded into
 the other slot) should be loaded into this slot
 once available, replacing the current buffer contents. Once a new image is fully
+<<<<<<< HEAD
 loaded into the slot, the appropriate imageSize variable must be set.
+=======
+loaded into the slot, the appropriate imageSize flag must be set.
+>>>>>>> origin/master
 
 \end{document}
