@@ -15,7 +15,7 @@
 
 \title{Cysat Platform API and Payload Interface Documentation}
 \author{Jake Drahos \\ \texttt{drahos@iastate.edu}}
-\date{\today\\v0.2 (DRAFT)}
+\date{\today\\v0.3 (DRAFT)}
 
 \maketitle
 
@@ -264,11 +264,22 @@ The largest responsibility of the payload thread will be to load images from
 the SD card and present them to the communications thread for downlinking. This
 is described in detail below.
 
-\subsection{Image Presentation}
+\subsection{Communication Between Threads}
+The full interface is defined in payload.h. See the header file for details.
+\subsubsection{Signal Queues}
+Two queues exist and pass signals between the payload thread and the
+communications thread. The payload thread calls ReceiveCommunicationsEvent()
+periodically to check for CommunicationsEvents from the
+communications thread. The payload thread calls PostPayloadEvent() to post 
+PayloadEvents to the Communications thread. The events are of the type
+PayloadEvent\_t and CommunicationsEvent\_t. Each event has a signal and a 32-bit
+integer attribute. The signal types are defined in payload.h, as well as the
+contextual meaning of the attribute integer.
+
 \subsubsection{Image Slots}
-Two image ``slots'', tentatively 64KB in size, are statically allocated,
+A number of image ``slots'', 64KB in size, are statically allocated,
 along with a number of flags  used to communicate state from the payload thread
-to the communications thread. These slots, imageSlotA and imageSlotB, would be
+to the communications thread. These slots will be
 populated by the payload thread and read by the communications thread. Upon
 command from the communications thread, the payload thread must ``flush'' the
 specified slot, deleting that image from the SD card and then proceeding to
@@ -276,85 +287,36 @@ load a new image into its place. If an image is over 64KB in size, it must be
 discarded, preferably by the payload board. The payload thread must not present
 an image over 64KB in size to the communications thread.
 
-\subsubsection{Other channels of communication}
-As stated above, a number of flags will communicate state from the payload
-thread to the communications thread. The payload thread will receive from a 
-queue to receive commands from the communications thread. These commands would
-include the ``flush'' command above, as well as activate/deactivate, purge, and
-miscellaneous configuration information that needs to be forwarded 
-to the payload
-board or otherwise handled appropriately. See Table 2 for an example list of
-commands.
+The payload thread must post the appropriate signals upon any image actions
+as well as keep the value of GetImagesOnSDCard() up to date as images are
+loaded and flushed.
 
-\begin{table}
-\begin{center}
-\caption{Globally accessible Payload-Platform Interface variables}
-\begin{tabular}{| l | l |}
-    \hline 
-    Variable & Brief description \\ \hline
-    uint8\_t[] imageSlotA & First 64K image buffer \\ \hline
-    uint8\_t[] imageSlotB & Second 64K image buffer \\ \hline
-    uint32\_t imageSizeA & Image A size in bytes. 0 for not loaded\\ \hline
-    uint32\_t imageSizeB & Image B size in bytes. 0 for not loaded \\ \hline
-    uint32\_t imagesOnSDCard & Number of images on SD card. Periodically updated \\ \hline
-    payloadStatus\_t payloadStatus & Enum for current payload status (active/inactive) \\ \hline
-    resolution\_t currentResolution\footnotemark[1] & Enum 
-    for resolution. \\ \hline
-    captureFrequency\_t currentCaptureFrequency\footnotemark[1] & Enum 
-    for capture frequency. \\ \hline
-    xQueueHandle payloadCommandQueue & Queue of commands sent to payload thread \\ \hline
-    uint32\_t errorFlags & Bit mask of error flags \\ \hline
-\end{tabular}\\
-\footnotesize{1. Placeholder for part of the global configuration state} 
-\end{center}
-\end{table}
+\subsubsection{Payload Configuration Settings}
+{\bfseries Note: The examples in this section are a placeholder to demonstrate
+how the settings system works. The exact settings available and meaning of
+different values must be finalized by project leadership}
 
-\subsubsection{Access to variables and naming scheme}
-All of the ``global'' variables, with the exception of the queue,
-will be written only by the payload thread. To enforce
-this, a number of getter functions will be used and the variables will be made non-global.
-If this is done, the getter naming scheme would be PAYLOAD\_get[VariableName](). Access to the
-queue will be handled with PAYLOAD\_QueueSend(). Access within the payload thread
-can be handled however is most conveniont. See Table 1 for an example set of
-static variables.
+Configuration change requests are sent as CommunicationsEvents with the 
+appropriate signal type and relevant attribute set to an enum value. The 
+current value of a configuration setting is read by the payload thread by
+calling functions such as GetPayloadResolution() or GetPayloadCaptureFrequency().
+These functions read the global configuration state stored by the payload
+and return it.
 
-\begin{table}
-\begin{center}
-\caption{Example list of commands}
-\footnotesize{Commands such as these are sent from the communications thread to the payload
-thread. As this is a proposal/draft, many\\ of these commands are placeholders.
-No commands have parameters; anything that would be parameterized is instead\\
-enumerated and given a distinct command. See the setResolution and 
-setCaptureFrequency \\command groups for placeholder examples.}
+\subsubsection{Global Variables and Functions}
+Image slots are globally accessible as an array of ImageSlot\_t structs. The
+event queues should not be directly accessed; call the Receive and Post
+functions in the header file. RTOS Queues are pass-by-copy.
 
-\begin{tabular}{| l | l |}
-    \hline 
-    Command & Brief description \\ \hline
-    activate & Turn on payload board and begin populating image slots if possible \\ \hline
-    deactivate & Turn off payload board and immediately cease population of image slots \\ \hline
-    purge & Delete all images from SD card. Ignored while active \\ \hline
-    flushSlotA & Flush slot A and delete from SD card \\ \hline
-    flushSlotB & Flush slot B and delete from SD card \\ \hline
-    setResolutionLow & Set resolution\\ \hline
-    setResolutionMed & Set resolution\\ \hline
-    setResolutionHigh & Set resolution\\ \hline
-    setCaptureFrequencyHighest & Set frequency at which images are taken\\ \hline
-    setCaptureFrequencyHigh & Set frequency at which images are taken\\ \hline
-    setCaptureFrequencyMedium & Set frequency at which images are taken\\ \hline
-    setCaptureFrequencyLow & Set frequency at which images are taken\\ \hline
-    setCaptureFrequencyLowest & Set frequency at which images are taken\\ \hline
-    setCaptureFrequencyNone & Stop capturing images. Put payload board into low-power mode, but do not deactivate.\\ \hline
-\end{tabular}
-\end{center}
-\end{table}
-
+{\bfseries See payload.h for more details.}
 
 \subsection{State Definitions}
 There are three states: uninitialized, inactive, and active.
 
 \subsubsection{Uninitialized}
 The payload board begins in the uninitialized state until initialization.
-Variables are undefined, and the payload board is in an undefined/unknown state.The uninitialized state can be the result of a complete power loss or a graceful
+Variables are undefined, and the payload board is in an undefined/unknown state.
+The uninitialized state can be the result of a complete power loss or a graceful
 reboot, so no assumptions as to the state of the payload board can be made.
 
 \subsubsection{Inactive State}
@@ -364,7 +326,9 @@ appropriate. Any configuration change commands are applied to the global
 configuration state, and any reads of the global configuration state take any
 such
 commands into account. However, the payload board remains in the low-power mode
-and no SD card operations are performed until the active state is entered.
+and no SD card operations are performed until the active state is entered. The
+inactive state is considered the safe state for satellite reboots with regards
+to the payload board and SD card.
 
 \subsubsection{Active State}
 In the active state, the payload board is taking pictures and the payload thread
@@ -427,6 +391,6 @@ from the SD card. At this point the slot is
 considered empty. The highest priority image (that is not already loaded into
 the other slot) should be loaded into this slot
 once available, replacing the current buffer contents. Once a new image is fully
-loaded into the slot, the appropriate imageSize flag must be set.
+loaded into the slot, the appropriate imageSize variable must be set.
 
 \end{document}
